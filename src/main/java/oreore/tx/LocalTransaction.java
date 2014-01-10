@@ -1,5 +1,8 @@
 package oreore.tx;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import javax.sql.DataSource;
@@ -9,12 +12,15 @@ public class LocalTransaction {
     private final class Context {
 
         private Connection con;
-
+        private ConnectionHandler handler;
         private boolean rollbackOnly;
 
         public void begin() throws SQLException {
             con = dataSource.getConnection();
             con.setAutoCommit(false);
+
+            ClassLoader loader = getClass().getClassLoader();
+            handler = new ConnectionHandler(con, loader);
         }
 
         public void commit() throws SQLException {
@@ -38,12 +44,61 @@ public class LocalTransaction {
         }
 
         public Connection getConnection() {
-            return con;
+            return handler.get();
+        }
+    }
+
+    private static class ConnectionHandler implements InvocationHandler {
+
+        private final Connection con;
+        private final Connection proxy;
+
+        public ConnectionHandler(Connection con, ClassLoader loader) {
+            this.con = con;
+            this.proxy = (Connection) Proxy.newProxyInstance(loader,
+                    new Class<?>[] { Connection.class }, this);
+        }
+
+        public Connection get() {
+            return proxy;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args)
+                throws Throwable {
+
+            if (method.equals(Connection.class.getMethod("commit"))) {
+                throw new SQLException();
+            } else if (method.equals(Connection.class.getMethod("rollback"))) {
+                throw new SQLException();
+            } else if (method.equals(Connection.class.getMethod("close"))) {
+                throw new SQLException();
+            }
+
+            if (method.equals(Object.class.getMethod("toString"))) {
+                return "Transactional(" + con + ")";
+            } else if (method.equals(Object.class.getMethod("hashCode"))) {
+                return con.hashCode();
+            } else if (method.equals(Object.class.getMethod("equals",
+                    Object.class))) {
+                Object other = args[0];
+                if (other != null && Proxy.isProxyClass(other.getClass())) {
+                    InvocationHandler handler = Proxy
+                            .getInvocationHandler(other);
+                    if (ConnectionHandler.class.isAssignableFrom(handler
+                            .getClass())) {
+                        return con
+                                .equals(ConnectionHandler.class.cast(handler).con);
+                    }
+                }
+                return false;
+            }
+
+            return method.invoke(con, args);
         }
     }
 
     private final ThreadLocal<Context> contexts = new ThreadLocal<>();
-
     private final DataSource dataSource;
 
     public LocalTransaction(DataSource dataSource) {
@@ -102,7 +157,6 @@ public class LocalTransaction {
         if (context == null) {
             throw new IllegalStateException("Transaction must be begun");
         }
-        //TODO commitなどが出来ないようにラッパーを返す
         return context.getConnection();
     }
 }

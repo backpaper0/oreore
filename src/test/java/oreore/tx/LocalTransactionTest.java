@@ -2,6 +2,8 @@ package oreore.tx;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -187,5 +189,35 @@ public class LocalTransactionTest {
 
         assertThat(mockConnectionProvider1.getCommitCount(), is(1));
         assertThat(mockConnectionProvider2.getCommitCount(), is(1));
+    }
+
+    @Test
+    public void test_direct_commit_disallowed() throws Exception {
+        tx.begin();
+        Connection con = tx.getConnection();
+        try {
+            con.commit();
+            fail();
+        } catch (SQLException expected) {}
+    }
+
+    @Test
+    public void test_direct_rollback_disallowed() throws Exception {
+        tx.begin();
+        Connection con = tx.getConnection();
+        try {
+            con.rollback();
+            fail();
+        } catch (SQLException expected) {}
+    }
+
+    @Test
+    public void test_direct_close_disallowed() throws Exception {
+        tx.begin();
+        Connection con = tx.getConnection();
+        try {
+            con.close();
+            fail();
+        } catch (SQLException expected) {}
     }
 }
