@@ -13,11 +13,11 @@ public class LocalTransaction {
 
     private final class Context {
 
-        private Connection con;
-        private ConnectionHandler handler;
+        private final Connection con;
+        private final ConnectionHandler handler;
         private boolean rollbackOnly;
 
-        public void begin() throws SQLException {
+        public Context() throws SQLException {
             con = dataSource.getConnection();
             con.setAutoCommit(false);
 
@@ -114,7 +114,6 @@ public class LocalTransaction {
             throw new IllegalStateException("Transaction is begun");
         }
         Context context = new Context();
-        context.begin();
         contexts.set(context);
         if (logger.isLoggable(Level.INFO)) {
             logger.log(Level.INFO, "tx.begun", new Object[] { context });
