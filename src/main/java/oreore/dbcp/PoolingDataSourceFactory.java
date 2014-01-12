@@ -5,6 +5,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 public class PoolingDataSourceFactory {
@@ -55,6 +57,10 @@ public class PoolingDataSourceFactory {
             this.con = this.cp.checkOut();
             proxy = (Connection) Proxy.newProxyInstance(loader,
                     new Class<?>[] { Connection.class }, this);
+            if (logger.isLoggable(Level.INFO)) {
+                logger.log(Level.INFO, "dbcp.logical.opened",
+                        new Object[] { proxy });
+            }
         }
 
         public Connection get() {
@@ -66,6 +72,10 @@ public class PoolingDataSourceFactory {
                 throws Throwable {
             if (method.equals(Connection.class.getMethod("close"))) {
                 cp.checkIn(con);
+                if (logger.isLoggable(Level.INFO)) {
+                    logger.log(Level.INFO, "dbcp.logical.closed",
+                            new Object[] { proxy });
+                }
                 return null;
             }
 
@@ -91,6 +101,9 @@ public class PoolingDataSourceFactory {
             return method.invoke(con, args);
         }
     }
+
+    private static final Logger logger = Logger.getLogger(
+            PoolingDataSource.class.getName(), "oreore");
 
     public PoolingDataSource create(ConnectionPool cp) {
         ClassLoader loader = getClass().getClassLoader();

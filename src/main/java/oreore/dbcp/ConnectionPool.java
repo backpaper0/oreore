@@ -12,6 +12,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 public class ConnectionPool implements AutoCloseable {
@@ -38,7 +40,7 @@ public class ConnectionPool implements AutoCloseable {
             lock.lock();
             try {
                 pool.remove(this);
-                con.close();
+                close(con);
                 while (pool.size() < minPoolSize) {
                     pool.offer(new Pooled(dataSource.getConnection()));
                 }
@@ -49,6 +51,8 @@ public class ConnectionPool implements AutoCloseable {
         }
     }
 
+    private static final Logger logger = Logger.getLogger(
+            PoolingDataSource.class.getName(), "oreore");
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     private final Queue<Pooled> pool = new LinkedList<>();
     private DataSource dataSource;
@@ -58,17 +62,32 @@ public class ConnectionPool implements AutoCloseable {
     private final ScheduledExecutorService executor = Executors
             .newSingleThreadScheduledExecutor();
 
+    private void close(Connection con) throws SQLException {
+        con.close();
+        if (logger.isLoggable(Level.INFO)) {
+            logger.log(Level.INFO, "dbcp.physical.closed", new Object[] { con });
+        }
+    }
+
+    private Connection open() throws SQLException {
+        Connection con = dataSource.getConnection();
+        if (logger.isLoggable(Level.INFO)) {
+            logger.log(Level.INFO, "dbcp.physical.opened", new Object[] { con });
+        }
+        return con;
+    }
+
     public void setDataSource(DataSource dataSource) throws SQLException {
         Lock lock = readWriteLock.writeLock();
         lock.lock();
         try {
             while (pool.isEmpty() == false) {
                 Pooled pooled = pool.poll();
-                pooled.getConnection().close();
+                close(pooled.getConnection());
             }
             this.dataSource = dataSource;
             while (pool.size() < this.minPoolSize) {
-                pool.offer(new Pooled(dataSource.getConnection()));
+                pool.offer(new Pooled(open()));
             }
         } finally {
             lock.unlock();
@@ -84,7 +103,7 @@ public class ConnectionPool implements AutoCloseable {
             }
             this.minPoolSize = minPoolSize;
             while (pool.size() < this.minPoolSize) {
-                pool.offer(new Pooled(dataSource.getConnection()));
+                pool.offer(new Pooled(open()));
             }
         } finally {
             lock.unlock();
@@ -101,7 +120,7 @@ public class ConnectionPool implements AutoCloseable {
             this.maxPoolSize = maxPoolSize;
             while (pool.size() > maxPoolSize) {
                 Pooled pooled = pool.poll();
-                pooled.getConnection().close();
+                close(pooled.getConnection());
             }
         } finally {
             lock.unlock();
@@ -116,7 +135,7 @@ public class ConnectionPool implements AutoCloseable {
             if (pooled != null) {
                 return pooled.getConnection();
             }
-            return dataSource.getConnection();
+            return open();
         } finally {
             lock.unlock();
         }
@@ -129,7 +148,7 @@ public class ConnectionPool implements AutoCloseable {
             if (pool.size() < maxPoolSize) {
                 pool.offer(new Pooled(con));
             } else {
-                con.close();
+                close(con);
             }
         } finally {
             lock.unlock();
@@ -154,7 +173,7 @@ public class ConnectionPool implements AutoCloseable {
             executor.shutdown();
             while (pool.isEmpty() == false) {
                 Pooled pooled = pool.poll();
-                pooled.getConnection().close();
+                close(pooled.getConnection());
             }
         } finally {
             lock.unlock();

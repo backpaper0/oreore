@@ -5,6 +5,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 public class LocalTransaction {
@@ -98,6 +100,8 @@ public class LocalTransaction {
         }
     }
 
+    private static final Logger logger = Logger.getLogger(
+            LocalTransaction.class.getName(), "oreore");
     private final ThreadLocal<Context> contexts = new ThreadLocal<>();
     private final DataSource dataSource;
 
@@ -112,6 +116,9 @@ public class LocalTransaction {
         Context context = new Context();
         context.begin();
         contexts.set(context);
+        if (logger.isLoggable(Level.INFO)) {
+            logger.log(Level.INFO, "tx.begun", new Object[] { context });
+        }
     }
 
     public void commit() throws SQLException {
@@ -121,6 +128,9 @@ public class LocalTransaction {
         }
         context.commit();
         contexts.remove();
+        if (logger.isLoggable(Level.INFO)) {
+            logger.log(Level.INFO, "tx.committed", new Object[] { context });
+        }
     }
 
     public void rollback() throws SQLException {
@@ -130,6 +140,9 @@ public class LocalTransaction {
         }
         context.rollback();
         contexts.remove();
+        if (logger.isLoggable(Level.INFO)) {
+            logger.log(Level.INFO, "tx.rolledback", new Object[] { context });
+        }
     }
 
     public boolean isActive() {
